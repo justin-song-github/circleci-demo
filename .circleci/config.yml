@@ -1,0 +1,105 @@
+version: 2
+parameters:
+  temp-workspace:
+    type: string
+    default: "/temp/workspace"
+jobs:
+  build:
+    docker:
+      - image: circleci/openjdk:8-jdk
+    working_directory: ~/circleci-demo
+
+    environment:
+      JVM_OPTS: -Xmx3200m
+      MVN_ARGS: -Dmaven.repo.local=.repo
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "pom.xml" }}
+            # fallback to using the latest cache if no exact match is found
+            - v1-dependencies-
+
+      - run: mvn clean install package ${MVN_ARGS}
+
+      - save_cache:
+          paths:
+            -  .repo
+          key: v1-dependencies-{{ checksum "pom.xml" }}
+
+      - store_artifacts:
+          path: target/
+          destination: circleci-demo-jar
+
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - circleci-demo
+  test:
+    docker:
+      - image: circleci/openjdk:8-jdk
+    working_directory: ~/circleci-demo
+
+    environment:
+      JVM_OPTS: -Xmx3200m
+      MVN_ARGS: -Dmaven.repo.local=.repo
+
+    steps:
+      - attach_workspace:
+          at: ~/circleci-demo
+
+      - run: | 
+          cd circleci-demo
+          mvn clean test ${MVN_ARGS}
+
+      - store_test_results:
+          path: circleci-demo/target/surefire-reports
+
+         
+  deploy-site1:
+    docker:
+      - image: circleci/openjdk:8-jdk 
+    steps:
+      - run: echo 'deploy sit1'
+
+
+  deploy-site2:
+    docker:
+      - image: circleci/openjdk:8-jdk 
+    steps:
+      - run: echo 'deploy sit2'
+
+
+workflows:
+  version: 2
+  circleci-demo-workflow:
+    jobs:
+      - build:
+          filters:
+            branches:
+              only: master
+
+      - test:
+          requires:
+            - build
+
+      - approval-deploy:
+          type: approval
+          requires:
+            - test
+
+      - deploy-site1:
+          requires:
+            - approval-deploy
+          filters:
+            branches:
+              only: master
+
+      - deploy-site2:
+          requires:
+            - approval-deploy
+          filters:
+            branches:
+              only: master
